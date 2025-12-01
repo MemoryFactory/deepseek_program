@@ -2,14 +2,24 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
 import os
 from openpyxl import Workbook
-from openpyxl.styles import Border, Side
-from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl.styles import Border, Side, Alignment, Font
+import matplotlib
+import sys
+
+# 设置matplotlib使用中文字体
+if sys.platform.startswith('win'):  # Windows系统
+    plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'Arial Unicode MS']
+elif sys.platform.startswith('darwin'):  # macOS系统
+    plt.rcParams['font.sans-serif'] = ['Heiti TC', 'Arial Unicode MS', 'STHeiti']
+else:  # Linux系统
+    plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'AR PL UMing CN', 'Arial Unicode MS']
+
+plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
 
 class TimingDiagramGenerator:
     def __init__(self, root):
@@ -92,7 +102,17 @@ class TimingDiagramGenerator:
             self.signals = []
             for index, row in self.df.iterrows():
                 signal_name = str(row.iloc[0])
-                values = [int(x) if str(x).isdigit() else 0 for x in row.iloc[1:]]
+                # 处理各种可能的输入格式
+                values = []
+                for x in row.iloc[1:]:
+                    if pd.isna(x):
+                        values.append(0)
+                    elif str(x).strip() in ['1', '高', 'H', 'High']:
+                        values.append(1)
+                    elif str(x).strip() in ['0', '低', 'L', 'Low']:
+                        values.append(0)
+                    else:
+                        values.append(0)  # 默认值
                 self.signals.append({
                     'name': signal_name,
                     'values': values
@@ -123,8 +143,9 @@ class TimingDiagramGenerator:
             y_pos = (num_signals - i - 1) * signal_spacing
             values = signal['values']
             
-            # 绘制信号名称
-            ax.text(-0.8, y_pos, signal['name'], ha='right', va='center', fontsize=12, fontweight='bold')
+            # 绘制信号名称（支持中文）
+            ax.text(-0.8, y_pos, signal['name'], ha='right', va='center', 
+                   fontsize=12, fontweight='bold')
             
             # 绘制时序线
             for t in range(len(values)):
@@ -154,7 +175,7 @@ class TimingDiagramGenerator:
             ax.hlines(y=y_pos-0.1, xmin=-0.5, xmax=max_time_units * time_unit_width - 0.5, 
                      linewidth=1, color='gray', alpha=0.3)
         
-        # 设置坐标轴标签
+        # 设置坐标轴标签（支持中文）
         ax.set_xlabel('时间')
         ax.set_ylabel('信号')
         
@@ -169,7 +190,7 @@ class TimingDiagramGenerator:
         # 添加网格
         ax.grid(True, alpha=0.3)
         
-        # 添加标题
+        # 添加标题（支持中文）
         ax.set_title('时序图', fontsize=14, fontweight='bold')
         
         self.canvas.draw()
@@ -182,12 +203,14 @@ class TimingDiagramGenerator:
         file_path = filedialog.asksaveasfilename(
             title="保存为JPG",
             defaultextension=".jpg",
-            filetypes=[("JPEG files", "*.jpg"), ("All files", "*.*")]
+            filetypes=[("JPEG files", "*.jpg"), ("PNG files", "*.png"), ("All files", "*.*")]
         )
         
         if file_path:
             try:
-                self.figure.savefig(file_path, dpi=300, bbox_inches='tight')
+                # 保存时确保中文字体正确
+                self.figure.savefig(file_path, dpi=300, bbox_inches='tight', 
+                                  facecolor='white', edgecolor='none')
                 messagebox.showinfo("成功", f"时序图已保存为: {file_path}")
             except Exception as e:
                 messagebox.showerror("错误", f"保存失败: {str(e)}")
@@ -210,66 +233,88 @@ class TimingDiagramGenerator:
                 ws.title = "时序图"
                 
                 # 定义边框样式
-                thin_border = Side(style='thin')
-                thick_border = Side(style='thick')
+                thin_border = Side(style='thin', color='000000')
+                thick_border = Side(style='thick', color='000000')
                 
-                # 写入信号名称
-                for i, signal in enumerate(self.signals):
-                    ws.cell(row=i+2, column=1, value=signal['name'])
-                
-                # 写入时序数据并设置边框
-                max_time_units = max(len(signal['values']) for signal in self.signals)
+                # 设置标题行
+                ws.cell(row=1, column=1, value="信号/时间")
+                title_cell = ws.cell(row=1, column=1)
+                title_cell.font = Font(bold=True)
+                title_cell.alignment = Alignment(horizontal='center', vertical='center')
                 
                 # 写入时间标签
+                max_time_units = max(len(signal['values']) for signal in self.signals)
                 for t in range(max_time_units):
-                    ws.cell(row=1, column=t+2, value=f'T{t}')
+                    time_cell = ws.cell(row=1, column=t+2, value=f'T{t}')
+                    time_cell.font = Font(bold=True)
+                    time_cell.alignment = Alignment(horizontal='center', vertical='center')
+                
+                # 写入信号数据，每个信号间隔一行
+                current_row = 2  # 从第2行开始
                 
                 for i, signal in enumerate(self.signals):
                     values = signal['values']
+                    
+                    # 写入信号名称
+                    name_cell = ws.cell(row=current_row, column=1, value=signal['name'])
+                    name_cell.font = Font(bold=True)
+                    name_cell.alignment = Alignment(horizontal='center', vertical='center')
+                    
+                    # 写入时序数据并设置边框
                     for t in range(len(values)):
-                        cell = ws.cell(row=i+2, column=t+2, value=values[t])
+                        cell = ws.cell(row=current_row, column=t+2, value=values[t])
+                        cell.alignment = Alignment(horizontal='center', vertical='center')
                         
                         # 设置边框
                         borders = {}
                         
-                        # 上边框（值为1时）
+                        # 上边框（值为1时用粗线，值为0时用细线）
                         if values[t] == 1:
                             borders['top'] = thick_border
                         else:
                             borders['top'] = thin_border
                         
-                        # 下边框（值为0时）
+                        # 下边框（值为0时用粗线，值为1时用细线）
                         if values[t] == 0:
                             borders['bottom'] = thick_border
                         else:
                             borders['bottom'] = thin_border
                         
-                        # 左边框（值变化时）
+                        # 左边框（值变化时用粗线）
                         if t > 0 and values[t] != values[t-1]:
                             borders['left'] = thick_border
                         else:
                             borders['left'] = thin_border
                         
-                        # 右边框（值变化时）
+                        # 右边框（值变化时用粗线）
                         if t < len(values)-1 and values[t] != values[t+1]:
                             borders['right'] = thick_border
                         else:
                             borders['right'] = thin_border
                         
                         cell.border = Border(**borders)
+                    
+                    # 移动到下一行，间隔一行
+                    current_row += 2
                 
-                # 自动调整列宽
-                for column in ws.columns:
-                    max_length = 0
-                    column_letter = column[0].column_letter
-                    for cell in column:
-                        try:
-                            if len(str(cell.value)) > max_length:
-                                max_length = len(str(cell.value))
-                        except:
-                            pass
-                    adjusted_width = (max_length + 2)
-                    ws.column_dimensions[column_letter].width = adjusted_width
+                # 设置列宽
+                ws.column_dimensions['A'].width = 15  # 信号名称列
+                for col in range(2, max_time_units + 2):
+                    col_letter = chr(64 + col)  # 转换为列字母
+                    ws.column_dimensions[col_letter].width = 8
+                
+                # 设置行高
+                for row in range(1, current_row):
+                    if row % 2 == 1:  # 数据行
+                        ws.row_dimensions[row].height = 25
+                    else:  # 间隔行
+                        ws.row_dimensions[row].height = 5
+                
+                # 合并间隔行的第一列单元格（为了美观）
+                for row in range(3, current_row, 2):
+                    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=max_time_units+1)
+                    merged_cell = ws.cell(row=row, column=1)
+                    merged_cell.value = ""  # 清空内容
                 
                 wb.save(file_path)
                 messagebox.showinfo("成功", f"时序图Excel已保存为: {file_path}")
