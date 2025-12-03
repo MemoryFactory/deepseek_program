@@ -86,28 +86,30 @@ class WebSearchGUI:
                                        values=["1.5", "2.0", "3.0", "4.0", "5.0"], width=8, state="readonly")
         self.delay_combo.pack(side=tk.LEFT, padx=5)
         
+        ttk.Label(row2_frame, text="最大翻页:").pack(side=tk.LEFT, padx=(20, 5))
+        self.max_pages_var = tk.StringVar(value="20")
+        self.max_pages_combo = ttk.Combobox(row2_frame, textvariable=self.max_pages_var,
+                                           values=["10", "20", "50", "100", "200"], width=8, state="readonly")
+        self.max_pages_combo.pack(side=tk.LEFT, padx=5)
+        
         self.case_sensitive_var = tk.BooleanVar()
         ttk.Checkbutton(row2_frame, text="区分大小写", 
                        variable=self.case_sensitive_var).pack(side=tk.LEFT, padx=20)
-        
-        ttk.Label(row2_frame, text="编码检测:").pack(side=tk.LEFT, padx=(20, 5))
-        self.encoding_var = tk.StringVar(value="自动检测")
-        self.encoding_combo = ttk.Combobox(row2_frame, textvariable=self.encoding_var, 
-                                         values=["自动检测", "UTF-8", "GBK", "GB2312", "GB18030", 
-                                                 "Big5", "ISO-8859-1", "Windows-1252"], width=12, state="readonly")
-        self.encoding_combo.pack(side=tk.LEFT, padx=5)
         
         # 第三行选项
         row3_frame = ttk.Frame(options_frame)
         row3_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=5)
         
+        ttk.Label(row3_frame, text="编码检测:").pack(side=tk.LEFT)
+        self.encoding_var = tk.StringVar(value="自动检测")
+        self.encoding_combo = ttk.Combobox(row3_frame, textvariable=self.encoding_var, 
+                                         values=["自动检测", "UTF-8", "GBK", "GB2312", "GB18030", 
+                                                 "Big5", "ISO-8859-1", "Windows-1252"], width=12, state="readonly")
+        self.encoding_combo.pack(side=tk.LEFT, padx=5)
+        
         self.include_html_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(row3_frame, text="搜索HTML标签内文本", 
-                       variable=self.include_html_var).pack(side=tk.LEFT, padx=5)
-        
-        self.remove_js_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(row3_frame, text="移除JavaScript代码", 
-                       variable=self.remove_js_var).pack(side=tk.LEFT, padx=20)
+                       variable=self.include_html_var).pack(side=tk.LEFT, padx=20)
         
         self.search_titles_only_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(row3_frame, text="仅搜索标题（标题页模式下）", 
@@ -166,7 +168,7 @@ class WebSearchGUI:
         """显示搜索模式说明"""
         mode_map = {
             "0: 仅当前页面": "仅搜索当前页面，不跟踪任何链接",
-            "1: 仅标题页翻页": "仅搜索论坛标题列表页，翻页但不进入具体帖子",
+            "1: 仅标题页翻页": "仅搜索论坛标题列表页，通过页码+1方式翻页",
             "2: 标题页+内容页": "搜索标题列表页并进入帖子内容，但不跟踪帖子内链接",
             "3: 标题页+内容页+深度链接": "搜索标题页、内容页及帖子内分页链接",
             "5: 全面搜索": "深度搜索，包括标题、内容和相关链接"
@@ -222,9 +224,10 @@ class WebSearchGUI:
             mode_num = int(mode_str.split(":")[0])  # 提取模式数字
             case_sensitive = self.case_sensitive_var.get()
             delay = float(self.delay_var.get())
+            max_pages = int(self.max_pages_var.get())
             
             # 执行搜索
-            results = self.search_website(start_url, keyword, mode_num, case_sensitive, delay)
+            results = self.search_website(start_url, keyword, mode_num, case_sensitive, delay, max_pages)
             
             # 显示结果
             if not self.stop_search_flag:
@@ -243,7 +246,7 @@ class WebSearchGUI:
             self.root.after(0, lambda: self.search_button.config(state='normal'))
             self.root.after(0, lambda: self.stop_button.config(state='disabled'))
     
-    def search_website(self, start_url, keyword, search_mode, case_sensitive, delay):
+    def search_website(self, start_url, keyword, search_mode, case_sensitive, delay, max_pages):
         """搜索网站内容"""
         visited_urls = set()
         results = []
@@ -270,7 +273,7 @@ class WebSearchGUI:
         elif search_mode == 1:
             # 仅标题页翻页
             urls_to_visit = [(start_url, 0, "title_page")]
-            self.update_progress("模式1: 仅搜索标题列表页（翻页不进入帖子）")
+            self.update_progress("模式1: 仅搜索标题列表页（页码+1方式翻页）")
         elif search_mode == 2:
             # 标题页+内容页
             urls_to_visit = [(start_url, 0, "title_page")]
@@ -302,7 +305,12 @@ class WebSearchGUI:
                 
                 if response.status_code != 200:
                     self.log_message(f"页面 {self.truncate_url(url)} 返回状态码: {response.status_code}", "warning")
-                    continue
+                    if search_mode == 1 and page_type == "title_page":
+                        # 在模式1下，如果页面访问失败，停止翻页
+                        self.log_message(f"页码 {self.extract_page_number(url)} 访问失败，停止翻页", "info")
+                        continue
+                    else:
+                        continue
                     
                 # 解析网页内容
                 page_content = self.parse_page_content(response.text, encoding)
@@ -350,14 +358,29 @@ class WebSearchGUI:
                     new_urls = []
                     
                     if search_mode == 1:
-                        # 模式1: 仅收集标题页的分页链接
+                        # 模式1: 通过页码+1方式翻页
                         if page_type == "title_page":
-                            # 查找分页链接，使用严格模式
-                            pagination_urls = self.find_strict_pagination_links(soup, url, visited_urls)
-                            for new_url in pagination_urls:
-                                new_urls.append((new_url, depth + 1, "title_page"))
-                                
-                            self.log_message(f"在标题页找到 {len(pagination_urls)} 个分页链接", "info")
+                            current_page = self.extract_page_number(url)
+                            if current_page is None:
+                                # 如果没有页码，默认为第1页
+                                current_page = 1
+                                self.log_message(f"当前URL未检测到页码，从第1页开始翻页", "info")
+                            
+                            # 生成下一页URL
+                            next_page = current_page + 1
+                            
+                            # 检查是否超过最大翻页数
+                            if next_page > max_pages:
+                                self.log_message(f"已达到最大翻页数 {max_pages}，停止翻页", "info")
+                            else:
+                                next_url = self.generate_next_page_url(url, current_page, next_page)
+                                if next_url:
+                                    # 验证下一页是否可能有效
+                                    if self.is_valid_url(next_url, url, visited_urls):
+                                        new_urls.append((next_url, depth + 1, "title_page"))
+                                        self.log_message(f"生成下一页: 第{next_page}页", "info")
+                                    else:
+                                        self.log_message(f"下一页URL无效: {self.truncate_url(next_url)}", "warning")
                     
                     elif search_mode == 2:
                         # 模式2: 收集标题页分页链接和内容链接
@@ -406,9 +429,15 @@ class WebSearchGUI:
                             
             except requests.exceptions.Timeout:
                 self.log_message(f"页面 {self.truncate_url(url)} 请求超时", "warning")
+                if search_mode == 1 and page_type == "title_page":
+                    # 在模式1下，如果超时，停止翻页
+                    self.log_message(f"页码 {self.extract_page_number(url)} 请求超时，停止翻页", "info")
                 continue
             except requests.exceptions.RequestException as e:
                 self.log_message(f"访问 {self.truncate_url(url)} 时网络错误: {str(e)}", "warning")
+                if search_mode == 1 and page_type == "title_page":
+                    # 在模式1下，如果网络错误，停止翻页
+                    self.log_message(f"页码 {self.extract_page_number(url)} 网络错误，停止翻页", "info")
                 continue
             except Exception as e:
                 self.log_message(f"处理 {self.truncate_url(url)} 时出错: {str(e)}", "error")
@@ -416,150 +445,114 @@ class WebSearchGUI:
                 
         return results
     
-    def find_strict_pagination_links(self, soup, base_url, visited_urls):
-        """严格查找分页链接 - 只识别类似&page=数字的链接"""
-        pagination_urls = []
+    def extract_page_number(self, url):
+        """从URL中提取页码数字"""
+        parsed = urlparse(url)
+        query = parse_qs(parsed.query)
         
-        # 解析当前URL
-        parsed_base = urlparse(base_url)
-        base_query = parse_qs(parsed_base.query)
-        
-        # 提取当前的page参数值（如果有）
-        current_page = None
-        for key in ['page', 'p', 'pg', 'paged', 'pn']:
-            if key in base_query and base_query[key]:
+        # 检查查询参数中的页码（常见分页参数）
+        page_param_names = ['page', 'p', 'pg', 'paged', 'pn', 'PAGEN_1', 'currentpage']
+        for key in page_param_names:
+            if key in query and query[key]:
                 try:
-                    current_page = int(base_query[key][0])
-                    break
+                    return int(query[key][0])
                 except:
                     continue
         
-        # 查找所有链接
-        all_links = soup.find_all('a', href=True)
+        # 检查路径中的页码（如/page/2/）
+        match = re.search(r'/page/(\d+)/', parsed.path)
+        if match:
+            return int(match.group(1))
         
-        for link in all_links:
-            href = link.get('href')
-            if not href:
-                continue
-                
-            # 转换为完整URL
-            full_url = urljoin(base_url, href)
-            
-            # 检查是否已访问过
-            if full_url in visited_urls:
-                continue
-            
-            # 解析链接URL
-            parsed_link = urlparse(full_url)
-            
-            # 检查是否同一域名
-            if parsed_link.netloc != parsed_base.netloc:
-                continue
-            
-            # 检查路径是否相同（允许微小差异）
-            if parsed_link.path != parsed_base.path:
-                # 路径不同，但可能是分页的另一种形式，如 /page/2/
-                if not re.search(r'/page/\d+/', parsed_link.path):
-                    continue
-            
-            # 解析查询参数
-            link_query = parse_qs(parsed_link.query)
-            
-            # 检查是否包含分页参数
-            has_page_param = False
-            page_param_name = None
-            page_value = None
-            
-            for key in ['page', 'p', 'pg', 'paged', 'pn']:
-                if key in link_query and link_query[key]:
-                    try:
-                        page_value = int(link_query[key][0])
-                        has_page_param = True
-                        page_param_name = key
-                        break
-                    except:
-                        continue
-            
-            # 如果没有分页参数，检查路径中的数字
-            if not has_page_param:
-                match = re.search(r'/page/(\d+)/', parsed_link.path)
-                if match:
-                    page_value = int(match.group(1))
-                    has_page_param = True
-                    page_param_name = 'page'
-            
-            if not has_page_param:
-                continue
-            
-            # 检查其他参数是否相同（除了分页参数）
-            base_params_copy = base_query.copy()
-            link_params_copy = link_query.copy()
-            
-            # 移除分页参数进行比较
-            for key in ['page', 'p', 'pg', 'paged', 'pn']:
-                if key in base_params_copy:
-                    del base_params_copy[key]
-                if key in link_params_copy:
-                    del link_params_copy[key]
-            
-            # 比较参数
-            if base_params_copy != link_params_copy:
-                continue
-            
-            # 检查链接文本是否符合分页特征
-            link_text = link.get_text(strip=True)
-            
-            # 常见的分页文本模式
-            page_text_patterns = [
-                r'^\d+$',  # 纯数字
-                r'^下一页', r'^上一页',
-                r'^Next', r'^Prev',
-                r'^»', r'^«'
-            ]
-            
-            is_page_text = False
-            for pattern in page_text_patterns:
-                if re.match(pattern, link_text):
-                    is_page_text = True
-                    break
-            
-            # 如果文本不是典型的分页文本，但URL明显是分页，也接受
-            if not is_page_text and page_value is not None:
-                # 检查当前页和链接页的关系
-                if current_page is not None:
-                    if abs(page_value - current_page) <= 10:  # 限制在10页范围内
-                        is_page_text = True
-            
-            if is_page_text or page_value is not None:
-                # 验证这是一个合理的分页链接
-                if self.is_valid_url(full_url, base_url, visited_urls):
-                    pagination_urls.append(full_url)
+        # 检查其他路径模式（如forum-1-2.html中的2）
+        match = re.search(r'[-_](\d+)\.(html|htm|php|aspx)$', parsed.path)
+        if match:
+            return int(match.group(1))
         
-        # 去重并排序
-        pagination_urls = list(set(pagination_urls))
+        # 检查路径末尾的数字（如/forum/2）
+        match = re.search(r'/(\d+)/?$', parsed.path)
+        if match:
+            return int(match.group(1))
         
-        # 尝试按页码排序
-        def extract_page_num(url):
-            parsed = urlparse(url)
-            query = parse_qs(parsed.query)
-            
-            for key in ['page', 'p', 'pg', 'paged', 'pn']:
-                if key in query and query[key]:
-                    try:
-                        return int(query[key][0])
-                    except:
-                        pass
-            
-            # 检查路径中的页码
-            match = re.search(r'/page/(\d+)/', parsed.path)
-            if match:
-                return int(match.group(1))
-            
-            return 0
+        # 如果没有找到页码，返回None
+        return None
+    
+    def generate_next_page_url(self, current_url, current_page, next_page):
+        """生成下一页的URL"""
+        parsed = urlparse(current_url)
+        query = parse_qs(parsed.query)
         
-        pagination_urls.sort(key=extract_page_num)
+        # 查找当前使用的分页参数
+        page_param = None
+        page_param_names = ['page', 'p', 'pg', 'paged', 'pn', 'PAGEN_1', 'currentpage']
         
-        return pagination_urls
+        for key in page_param_names:
+            if key in query and query[key]:
+                page_param = key
+                break
+        
+        if page_param:
+            # 更新分页参数
+            query[page_param] = [str(next_page)]
+        else:
+            # 如果没有分页参数，检查是否是路径分页
+            # 检查路径中的数字分页
+            path = parsed.path
+            
+            # 替换路径中的数字分页（如/page/2/）
+            new_path = re.sub(r'/page/(\d+)/', f'/page/{next_page}/', path)
+            if new_path != path:
+                # 路径分页已更新
+                return urlunparse((
+                    parsed.scheme,
+                    parsed.netloc,
+                    new_path,
+                    parsed.params,
+                    parsed.query,
+                    parsed.fragment
+                ))
+            
+            # 替换其他路径模式中的数字（如forum-1-2.html）
+            new_path = re.sub(r'[-_](\d+)\.(html|htm|php|aspx)$', f'-{next_page}.html', path)
+            if new_path != path:
+                return urlunparse((
+                    parsed.scheme,
+                    parsed.netloc,
+                    new_path,
+                    parsed.params,
+                    parsed.query,
+                    parsed.fragment
+                ))
+            
+            # 替换路径末尾的数字（如/forum/2）
+            new_path = re.sub(r'/(\d+)/?$', f'/{next_page}', path)
+            if new_path != path:
+                return urlunparse((
+                    parsed.scheme,
+                    parsed.netloc,
+                    new_path,
+                    parsed.params,
+                    parsed.query,
+                    parsed.fragment
+                ))
+            
+            # 如果都不是，添加page查询参数
+            query['page'] = [str(next_page)]
+        
+        # 重建查询字符串
+        new_query = '&'.join([f"{k}={v[0]}" for k, v in query.items()])
+        
+        # 重建URL
+        new_url = urlunparse((
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            parsed.params,
+            new_query,
+            parsed.fragment
+        ))
+        
+        return new_url
     
     def search_titles_only(self, html_content, keywords, case_sensitive, encoding):
         """仅搜索页面中的标题（适用于论坛列表页）"""
@@ -796,11 +789,6 @@ class WebSearchGUI:
         try:
             soup = BeautifulSoup(html_content, 'html.parser')
             
-            # 移除脚本和样式
-            if self.remove_js_var.get():
-                for script in soup(["script", "style", "noscript"]):
-                    script.decompose()
-            
             # 获取文本内容
             if self.include_html_var.get():
                 # 获取所有文本，包括HTML标签内的
@@ -914,7 +902,7 @@ class WebSearchGUI:
         return url[:max_length//2] + "..." + url[-max_length//2:]
     
     def find_pagination_links(self, soup, base_url, visited_urls):
-        """查找分页链接（通用方法）"""
+        """查找分页链接（通用方法，用于模式2及以上）"""
         pagination_urls = []
         
         # 查找常见的分页元素
@@ -982,7 +970,8 @@ class WebSearchGUI:
                 if self.is_valid_url(full_url, base_url, visited_urls):
                     pagination_urls.append(full_url)
         
-        return list(set(pagination_urls))  # 去重
+        # 去重
+        return list(set(pagination_urls))
     
     def find_content_links(self, soup, base_url, visited_urls):
         """查找内容链接"""
