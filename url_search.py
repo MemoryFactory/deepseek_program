@@ -33,17 +33,65 @@ class WebSearchGUI:
         url_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
         
         ttk.Label(url_frame, text="目标网址:").grid(row=0, column=0, sticky=tk.W)
-        self.url_entry = ttk.Entry(url_frame, width=80)
+        
+        # 网址输入框
+        self.url_entry = ttk.Entry(url_frame, width=70)
         self.url_entry.grid(row=0, column=1, padx=5, sticky=(tk.W, tk.E))
         self.url_entry.insert(0, "https://")
+        
+        # 清除和粘贴按钮
+        button_container = ttk.Frame(url_frame)
+        button_container.grid(row=0, column=2, padx=(5, 0))
+        
+        # 清除按钮
+        self.clear_url_button = ttk.Button(
+            button_container, 
+            text="清除", 
+            command=self.clear_url,
+            width=6
+        )
+        self.clear_url_button.pack(side=tk.LEFT, padx=(0, 2))
+        
+        # 粘贴按钮
+        self.paste_url_button = ttk.Button(
+            button_container, 
+            text="粘贴", 
+            command=self.paste_to_url,
+            width=6
+        )
+        self.paste_url_button.pack(side=tk.LEFT)
         
         # 关键词输入区域
         keyword_frame = ttk.Frame(main_frame)
         keyword_frame.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
         
         ttk.Label(keyword_frame, text="关键词:").grid(row=0, column=0, sticky=tk.W)
-        self.keyword_entry = ttk.Entry(keyword_frame, width=80)
+        
+        # 关键词输入框
+        self.keyword_entry = ttk.Entry(keyword_frame, width=70)
         self.keyword_entry.grid(row=0, column=1, padx=5, sticky=(tk.W, tk.E))
+        
+        # 关键词清除和粘贴按钮
+        keyword_button_container = ttk.Frame(keyword_frame)
+        keyword_button_container.grid(row=0, column=2, padx=(5, 0))
+        
+        # 关键词清除按钮
+        self.clear_keyword_button = ttk.Button(
+            keyword_button_container, 
+            text="清除", 
+            command=self.clear_keyword,
+            width=6
+        )
+        self.clear_keyword_button.pack(side=tk.LEFT, padx=(0, 2))
+        
+        # 关键词粘贴按钮
+        self.paste_keyword_button = ttk.Button(
+            keyword_button_container, 
+            text="粘贴", 
+            command=self.paste_to_keyword,
+            width=6
+        )
+        self.paste_keyword_button.pack(side=tk.LEFT)
         
         # 搜索选项区域
         options_frame = ttk.LabelFrame(main_frame, text="搜索选项", padding="10")
@@ -72,7 +120,7 @@ class WebSearchGUI:
         self.mode_combo.bind('<<ComboboxSelected>>', self.show_mode_description)
         
         # 显示当前模式说明的标签
-        self.mode_desc_var = tk.StringVar(value="仅搜索论坛标题列表页，翻页但不进入具体帖子")
+        self.mode_desc_var = tk.StringVar(value="仅搜索论坛标题列表页，通过页码+1方式翻页")
         ttk.Label(row1_frame, textvariable=self.mode_desc_var, 
                  foreground="blue", font=("Arial", 9)).pack(side=tk.LEFT, padx=10)
         
@@ -163,6 +211,95 @@ class WebSearchGUI:
         self.root.rowconfigure(0, weight=1)
         main_frame.columnconfigure(1, weight=1)
         main_frame.rowconfigure(5, weight=1)
+        
+        # 绑定快捷键
+        self.setup_shortcuts()
+    
+    def setup_shortcuts(self):
+        """设置快捷键"""
+        # 网址输入框的快捷键
+        self.url_entry.bind('<Control-a>', self.select_all_text)
+        self.url_entry.bind('<Control-c>', self.copy_text)
+        self.url_entry.bind('<Control-v>', self.paste_to_url_event)
+        
+        # 关键词输入框的快捷键
+        self.keyword_entry.bind('<Control-a>', self.select_all_text)
+        self.keyword_entry.bind('<Control-c>', self.copy_text)
+        self.keyword_entry.bind('<Control-v>', self.paste_to_keyword_event)
+        
+        # 窗口级快捷键
+        self.root.bind('<Control-l>', lambda e: self.clear_url())
+        self.root.bind('<Control-p>', lambda e: self.paste_to_url())
+        self.root.bind('<Control-k>', lambda e: self.clear_keyword())
+        self.root.bind('<Control-o>', lambda e: self.paste_to_keyword())
+        self.root.bind('<F5>', lambda e: self.start_search())
+        self.root.bind('<Escape>', lambda e: self.stop_search())
+    
+    def select_all_text(self, event):
+        """全选文本"""
+        event.widget.select_range(0, tk.END)
+        return "break"
+    
+    def copy_text(self, event):
+        """复制文本"""
+        try:
+            selected_text = event.widget.selection_get()
+            self.root.clipboard_clear()
+            self.root.clipboard_append(selected_text)
+        except:
+            pass
+        return "break"
+    
+    def paste_to_url_event(self, event):
+        """粘贴到网址输入框（事件处理）"""
+        self.paste_to_url()
+        return "break"
+    
+    def paste_to_keyword_event(self, event):
+        """粘贴到关键词输入框（事件处理）"""
+        self.paste_to_keyword()
+        return "break"
+    
+    def clear_url(self):
+        """清空网址输入框"""
+        self.url_entry.delete(0, tk.END)
+        self.url_entry.insert(0, "https://")
+        self.url_entry.focus_set()
+        
+    def clear_keyword(self):
+        """清空关键词输入框"""
+        self.keyword_entry.delete(0, tk.END)
+        self.keyword_entry.focus_set()
+    
+    def paste_to_url(self):
+        """将剪贴板内容粘贴到网址输入框"""
+        try:
+            # 获取剪贴板内容
+            clipboard_text = self.root.clipboard_get()
+            if clipboard_text:
+                # 清空输入框
+                self.url_entry.delete(0, tk.END)
+                # 插入剪贴板内容
+                self.url_entry.insert(0, clipboard_text)
+                self.url_entry.focus_set()
+        except tk.TclError:
+            # 剪贴板为空或无法访问
+            pass
+    
+    def paste_to_keyword(self):
+        """将剪贴板内容粘贴到关键词输入框"""
+        try:
+            # 获取剪贴板内容
+            clipboard_text = self.root.clipboard_get()
+            if clipboard_text:
+                # 清空输入框
+                self.keyword_entry.delete(0, tk.END)
+                # 插入剪贴板内容
+                self.keyword_entry.insert(0, clipboard_text)
+                self.keyword_entry.focus_set()
+        except tk.TclError:
+            # 剪贴板为空或无法访问
+            pass
     
     def show_mode_description(self, event=None):
         """显示搜索模式说明"""
@@ -265,23 +402,34 @@ class WebSearchGUI:
         
         page_count = 0
         
-        # 根据搜索模式决定初始搜索队列
+        # 根据搜索模式决定搜索方式
         if search_mode == 0:
             # 仅当前页面，不跟踪任何链接
-            urls_to_visit = [(start_url, 0, "page")]
             self.update_progress("模式0: 仅搜索当前页面")
+            urls_to_visit = [(start_url, 0, "page")]
+            
         elif search_mode == 1:
-            # 仅标题页翻页
-            urls_to_visit = [(start_url, 0, "title_page")]
+            # 仅标题页翻页 - 使用简单页码累加
             self.update_progress("模式1: 仅搜索标题列表页（页码+1方式翻页）")
+            
+            # 获取起始页码
+            start_page = self.extract_page_number(start_url)
+            if start_page is None:
+                start_page = 1
+                self.log_message(f"起始URL未检测到页码，从第1页开始", "info")
+            
+            # 只添加起始页面，后续通过页码累加生成
+            urls_to_visit = [(start_url, 0, "title_page")]
+            
         elif search_mode == 2:
             # 标题页+内容页
-            urls_to_visit = [(start_url, 0, "title_page")]
             self.update_progress("模式2: 搜索标题列表页和帖子内容")
+            urls_to_visit = [(start_url, 0, "title_page")]
+            
         else:
             # 其他模式，正常搜索
-            urls_to_visit = [(start_url, 0, "page")]
             self.update_progress(f"模式{search_mode}: 深度搜索")
+            urls_to_visit = [(start_url, 0, "page")]
         
         while urls_to_visit and not self.stop_search_flag:
             url, depth, page_type = urls_to_visit.pop(0)
@@ -305,9 +453,11 @@ class WebSearchGUI:
                 
                 if response.status_code != 200:
                     self.log_message(f"页面 {self.truncate_url(url)} 返回状态码: {response.status_code}", "warning")
+                    
+                    # 在模式1下，如果访问失败，停止翻页
                     if search_mode == 1 and page_type == "title_page":
-                        # 在模式1下，如果页面访问失败，停止翻页
-                        self.log_message(f"页码 {self.extract_page_number(url)} 访问失败，停止翻页", "info")
+                        current_page = self.extract_page_number(url)
+                        self.log_message(f"第{current_page}页访问失败，停止翻页", "info")
                         continue
                     else:
                         continue
@@ -352,56 +502,50 @@ class WebSearchGUI:
                 
                 # 根据搜索模式决定是否查找更多链接
                 if search_mode > 0:  # 模式0不收集任何链接
-                    soup = BeautifulSoup(response.text, 'html.parser')
-                    
-                    # 根据搜索模式决定收集哪些链接
-                    new_urls = []
                     
                     if search_mode == 1:
-                        # 模式1: 通过页码+1方式翻页
+                        # 模式1: 通过页码+1方式翻页，不检查页面内的任何链接
                         if page_type == "title_page":
                             current_page = self.extract_page_number(url)
                             if current_page is None:
-                                # 如果没有页码，默认为第1页
                                 current_page = 1
-                                self.log_message(f"当前URL未检测到页码，从第1页开始翻页", "info")
                             
-                            # 生成下一页URL
                             next_page = current_page + 1
                             
                             # 检查是否超过最大翻页数
                             if next_page > max_pages:
                                 self.log_message(f"已达到最大翻页数 {max_pages}，停止翻页", "info")
                             else:
+                                # 生成下一页URL
                                 next_url = self.generate_next_page_url(url, current_page, next_page)
-                                if next_url:
-                                    # 验证下一页是否可能有效
-                                    if self.is_valid_url(next_url, url, visited_urls):
-                                        new_urls.append((next_url, depth + 1, "title_page"))
+                                if next_url and next_url not in visited_urls:
+                                    # 简单验证URL格式
+                                    if self.is_valid_url_format(next_url):
+                                        urls_to_visit.append((next_url, depth + 1, "title_page"))
                                         self.log_message(f"生成下一页: 第{next_page}页", "info")
                                     else:
-                                        self.log_message(f"下一页URL无效: {self.truncate_url(next_url)}", "warning")
+                                        self.log_message(f"下一页URL格式无效，停止翻页", "info")
                     
                     elif search_mode == 2:
                         # 模式2: 收集标题页分页链接和内容链接
                         if page_type == "title_page":
-                            # 查找分页链接
-                            pagination_urls = self.find_pagination_links(soup, url, visited_urls)
-                            for new_url in pagination_urls:
-                                new_urls.append((new_url, depth + 1, "title_page"))
+                            soup = BeautifulSoup(response.text, 'html.parser')
                             
                             # 查找内容链接（进入帖子）
                             content_urls = self.find_content_links(soup, url, visited_urls)
                             for new_url in content_urls:
-                                new_urls.append((new_url, depth + 1, "content_page"))
-                                
-                            self.log_message(f"在标题页找到 {len(pagination_urls)} 个分页链接和 {len(content_urls)} 个内容链接", "info")
+                                if new_url not in visited_urls:
+                                    urls_to_visit.append((new_url, depth + 1, "content_page"))
+                                    
+                            self.log_message(f"在标题页找到 {len(content_urls)} 个内容链接", "info")
                         else:
                             # 在内容页不收集链接
                             pass
                     
                     elif search_mode >= 3:
                         # 模式3及以上: 正常收集链接
+                        soup = BeautifulSoup(response.text, 'html.parser')
+                        
                         # 查找分页链接
                         pagination_urls = self.find_pagination_links(soup, url, visited_urls)
                         # 查找内容链接
@@ -411,39 +555,46 @@ class WebSearchGUI:
                         all_new_urls = list(set(pagination_urls + content_urls))
                         
                         for new_url in all_new_urls:
-                            # 判断链接类型
-                            if new_url in pagination_urls:
-                                # 分页链接保持当前页面类型
-                                new_urls.append((new_url, depth + 1, page_type))
-                            else:
-                                # 内容链接
-                                if search_mode >= 3:
-                                    new_urls.append((new_url, depth + 1, "content_page"))
-                    
-                    # 将新链接加入待访问队列
-                    for new_url_info in new_urls:
-                        new_url, new_depth, new_type = new_url_info
-                        if (new_url not in visited_urls and 
-                            new_url_info not in urls_to_visit):
-                            urls_to_visit.append(new_url_info)
+                            if new_url not in visited_urls:
+                                # 判断链接类型
+                                if new_url in pagination_urls:
+                                    # 分页链接保持当前页面类型
+                                    urls_to_visit.append((new_url, depth + 1, page_type))
+                                else:
+                                    # 内容链接
+                                    if search_mode >= 3:
+                                        urls_to_visit.append((new_url, depth + 1, "content_page"))
                             
             except requests.exceptions.Timeout:
                 self.log_message(f"页面 {self.truncate_url(url)} 请求超时", "warning")
                 if search_mode == 1 and page_type == "title_page":
                     # 在模式1下，如果超时，停止翻页
-                    self.log_message(f"页码 {self.extract_page_number(url)} 请求超时，停止翻页", "info")
+                    current_page = self.extract_page_number(url)
+                    self.log_message(f"第{current_page}页请求超时，停止翻页", "info")
                 continue
             except requests.exceptions.RequestException as e:
                 self.log_message(f"访问 {self.truncate_url(url)} 时网络错误: {str(e)}", "warning")
                 if search_mode == 1 and page_type == "title_page":
                     # 在模式1下，如果网络错误，停止翻页
-                    self.log_message(f"页码 {self.extract_page_number(url)} 网络错误，停止翻页", "info")
+                    current_page = self.extract_page_number(url)
+                    self.log_message(f"第{current_page}页网络错误，停止翻页", "info")
                 continue
             except Exception as e:
                 self.log_message(f"处理 {self.truncate_url(url)} 时出错: {str(e)}", "error")
                 continue
                 
         return results
+    
+    def is_valid_url_format(self, url):
+        """简单检查URL格式是否有效"""
+        if not url.startswith(('http://', 'https://')):
+            return False
+        
+        try:
+            result = urlparse(url)
+            return all([result.scheme, result.netloc])
+        except:
+            return False
     
     def extract_page_number(self, url):
         """从URL中提取页码数字"""
@@ -459,22 +610,24 @@ class WebSearchGUI:
                 except:
                     continue
         
-        # 检查路径中的页码（如/page/2/）
-        match = re.search(r'/page/(\d+)/', parsed.path)
-        if match:
-            return int(match.group(1))
+        # 如果没有找到页码，检查URL是否有数字模式
+        # 常见模式：/page/2/, /2/, -2.html 等
+        patterns = [
+            r'/page/(\d+)/',          # /page/2/
+            r'/(\d+)/$',              # /2/
+            r'[-_](\d+)\.(html|htm|php|aspx)$',  # -2.html
+            r'/(\d+)$',               # /2
+        ]
         
-        # 检查其他路径模式（如forum-1-2.html中的2）
-        match = re.search(r'[-_](\d+)\.(html|htm|php|aspx)$', parsed.path)
-        if match:
-            return int(match.group(1))
+        for pattern in patterns:
+            match = re.search(pattern, parsed.path)
+            if match:
+                try:
+                    return int(match.group(1))
+                except:
+                    continue
         
-        # 检查路径末尾的数字（如/forum/2）
-        match = re.search(r'/(\d+)/?$', parsed.path)
-        if match:
-            return int(match.group(1))
-        
-        # 如果没有找到页码，返回None
+        # 如果没有找到任何页码，返回None
         return None
     
     def generate_next_page_url(self, current_url, current_page, next_page):
@@ -494,15 +647,28 @@ class WebSearchGUI:
         if page_param:
             # 更新分页参数
             query[page_param] = [str(next_page)]
+            
+            # 重建查询字符串
+            new_query = '&'.join([f"{k}={v[0]}" for k, v in query.items()])
+            
+            # 重建URL
+            new_url = urlunparse((
+                parsed.scheme,
+                parsed.netloc,
+                parsed.path,
+                parsed.params,
+                new_query,
+                parsed.fragment
+            ))
+            
+            return new_url
         else:
             # 如果没有分页参数，检查是否是路径分页
-            # 检查路径中的数字分页
             path = parsed.path
             
-            # 替换路径中的数字分页（如/page/2/）
+            # 尝试替换路径中的数字分页（如/page/2/）
             new_path = re.sub(r'/page/(\d+)/', f'/page/{next_page}/', path)
             if new_path != path:
-                # 路径分页已更新
                 return urlunparse((
                     parsed.scheme,
                     parsed.netloc,
@@ -512,7 +678,7 @@ class WebSearchGUI:
                     parsed.fragment
                 ))
             
-            # 替换其他路径模式中的数字（如forum-1-2.html）
+            # 尝试替换其他路径模式中的数字（如forum-1-2.html）
             new_path = re.sub(r'[-_](\d+)\.(html|htm|php|aspx)$', f'-{next_page}.html', path)
             if new_path != path:
                 return urlunparse((
@@ -524,7 +690,7 @@ class WebSearchGUI:
                     parsed.fragment
                 ))
             
-            # 替换路径末尾的数字（如/forum/2）
+            # 尝试替换路径末尾的数字（如/forum/2）
             new_path = re.sub(r'/(\d+)/?$', f'/{next_page}', path)
             if new_path != path:
                 return urlunparse((
@@ -536,23 +702,20 @@ class WebSearchGUI:
                     parsed.fragment
                 ))
             
-            # 如果都不是，添加page查询参数
-            query['page'] = [str(next_page)]
-        
-        # 重建查询字符串
-        new_query = '&'.join([f"{k}={v[0]}" for k, v in query.items()])
-        
-        # 重建URL
-        new_url = urlunparse((
-            parsed.scheme,
-            parsed.netloc,
-            parsed.path,
-            parsed.params,
-            new_query,
-            parsed.fragment
-        ))
-        
-        return new_url
+            # 如果都不是，添加page查询参数（最简单的方法）
+            if parsed.query:
+                new_query = f"{parsed.query}&page={next_page}"
+            else:
+                new_query = f"page={next_page}"
+            
+            return urlunparse((
+                parsed.scheme,
+                parsed.netloc,
+                parsed.path,
+                parsed.params,
+                new_query,
+                parsed.fragment
+            ))
     
     def search_titles_only(self, html_content, keywords, case_sensitive, encoding):
         """仅搜索页面中的标题（适用于论坛列表页）"""
@@ -588,34 +751,7 @@ class WebSearchGUI:
                         not self.is_pagination_link_text(title_text) and
                         not href.startswith(('#', 'javascript:'))):
                         
-                        # 检查是否是帖子链接（排除分页链接）
-                        if any(keyword in href.lower() for keyword in ['thread', 'forum', 'post', 'tid=']):
-                            forum_titles.append((title_text, href))
-            
-            # 如果没找到，尝试更通用的方法
-            if not forum_titles:
-                # 查找所有链接，根据文本长度和URL模式判断
-                all_links = soup.find_all('a', href=True)
-                for link in all_links:
-                    title_text = link.get_text(strip=True)
-                    href = link.get('href', '')
-                    
-                    # 过滤条件
-                    if (len(title_text) >= 5 and len(title_text) <= 200 and
-                        not self.is_pagination_link_text(title_text) and
-                        not href.startswith(('#', 'javascript:')) and
-                        'http' in href and
-                        not any(keyword in href.lower() for keyword in ['page=', 'p=', 'logout', 'login'])):
-                        
                         forum_titles.append((title_text, href))
-            
-            # 去重
-            unique_titles = []
-            seen = set()
-            for title, href in forum_titles:
-                if title not in seen:
-                    seen.add(title)
-                    unique_titles.append((title, href))
             
             # 搜索每个标题
             flags = 0 if case_sensitive else re.IGNORECASE
@@ -626,7 +762,7 @@ class WebSearchGUI:
                     pattern = re.compile(escaped_keyword, flags)
                 except re.error:
                     # 正则表达式编译失败，使用普通字符串搜索
-                    for title, href in unique_titles:
+                    for title, href in forum_titles:
                         if case_sensitive:
                             if keyword in title:
                                 total_matches += 1
@@ -640,7 +776,7 @@ class WebSearchGUI:
                     continue
                 
                 # 使用正则表达式搜索
-                for title, href in unique_titles:
+                for title, href in forum_titles:
                     matches = list(pattern.finditer(title))
                     if matches:
                         total_matches += len(matches)
@@ -902,7 +1038,7 @@ class WebSearchGUI:
         return url[:max_length//2] + "..." + url[-max_length//2:]
     
     def find_pagination_links(self, soup, base_url, visited_urls):
-        """查找分页链接（通用方法，用于模式2及以上）"""
+        """查找分页链接（用于模式3及以上）"""
         pagination_urls = []
         
         # 查找常见的分页元素
@@ -928,49 +1064,9 @@ class WebSearchGUI:
                 href = link.get('href')
                 if href:
                     full_url = urljoin(base_url, href)
-                    if self.is_valid_url(full_url, base_url, visited_urls):
+                    if self.is_valid_url_format(full_url) and full_url not in visited_urls:
                         pagination_urls.append(full_url)
         
-        # 查找包含分页参数的链接
-        page_patterns = [
-            r'[?&](page|paged|pg|p)=\d+',
-            r'[?&]page[ds]?=\d+',
-            r'/\d+/$',  # 以数字结尾的路径，如 /page/2/
-            r'/page/\d+/'
-        ]
-        
-        for pattern in page_patterns:
-            page_links = soup.find_all('a', href=re.compile(pattern))
-            for link in page_links:
-                href = link.get('href')
-                if href:
-                    full_url = urljoin(base_url, href)
-                    if self.is_valid_url(full_url, base_url, visited_urls):
-                        pagination_urls.append(full_url)
-        
-        # 查找中文分页文本
-        chinese_page_texts = ['下一页', '上一页', '下一页>', '<上一页', '下页', '上页', 
-                             '后页', '前页', '最后一页', '第一页', '末页', '首页']
-        
-        for text in chinese_page_texts:
-            next_links = soup.find_all('a', string=text)
-            for link in next_links:
-                href = link.get('href')
-                if href:
-                    full_url = urljoin(base_url, href)
-                    if self.is_valid_url(full_url, base_url, visited_urls):
-                        pagination_urls.append(full_url)
-        
-        # 查找数字分页（1, 2, 3...）
-        num_links = soup.find_all('a', string=re.compile(r'^\d+$'))
-        for link in num_links:
-            href = link.get('href')
-            if href:
-                full_url = urljoin(base_url, href)
-                if self.is_valid_url(full_url, base_url, visited_urls):
-                    pagination_urls.append(full_url)
-        
-        # 去重
         return list(set(pagination_urls))
     
     def find_content_links(self, soup, base_url, visited_urls):
@@ -1005,98 +1101,10 @@ class WebSearchGUI:
                 href = link.get('href')
                 if href:
                     full_url = urljoin(base_url, href)
-                    if self.is_valid_url(full_url, base_url, visited_urls):
+                    if self.is_valid_url_format(full_url) and full_url not in visited_urls:
                         content_urls.append(full_url)
         
-        # 查找中文论坛常见链接
-        chinese_link_texts = ['查看全文', '阅读更多', '详细内容', '全文', '更多', '回复', '评论']
-        
-        for text in chinese_link_texts:
-            text_links = soup.find_all('a', string=re.compile(text))
-            for link in text_links:
-                href = link.get('href')
-                if href:
-                    full_url = urljoin(base_url, href)
-                    if self.is_valid_url(full_url, base_url, visited_urls):
-                        content_urls.append(full_url)
-        
-        # 查找可能包含内容的链接（通过链接文本长度判断）
-        all_links = soup.find_all('a', href=True)
-        for link in all_links:
-            href = link.get('href')
-            link_text = link.get_text(strip=True)
-            
-            if href and link_text and len(link_text) > 10 and len(link_text) < 200:
-                # 链接文本较长，可能是内容链接
-                full_url = urljoin(base_url, href)
-                if (self.is_valid_url(full_url, base_url, visited_urls) and
-                    not self.is_file_link(full_url) and
-                    not re.search(r'\.(css|js|jpg|png|gif|pdf|zip|rar)$', full_url, re.IGNORECASE)):
-                    
-                    # 排除常见非内容链接
-                    exclude_patterns = ['首页', '主页', 'home', 'login', '注册', 'signup', '登录']
-                    if not any(pattern in link_text for pattern in exclude_patterns):
-                        content_urls.append(full_url)
-        
-        return list(set(content_urls))  # 去重
-    
-    def is_valid_url(self, url, base_url, visited_urls):
-        """检查URL是否有效"""
-        if url in visited_urls:
-            return False
-        
-        if not url.startswith(('http://', 'https://')):
-            return False
-        
-        if not self.is_same_domain(base_url, url):
-            return False
-        
-        if self.is_file_link(url):
-            return False
-        
-        # 排除一些常见的不需要爬取的URL
-        exclude_patterns = [
-            r'logout',
-            r'login',
-            r'register',
-            r'signup',
-            r'admin',
-            r'logout',
-            r'edit',
-            r'delete',
-            r'\.rss$',
-            r'\.xml$',
-            r'feed',
-            r'javascript:',
-            r'^#'
-        ]
-        
-        for pattern in exclude_patterns:
-            if re.search(pattern, url, re.IGNORECASE):
-                return False
-        
-        return True
-    
-    def is_same_domain(self, url1, url2):
-        """检查两个URL是否在同一域名下"""
-        try:
-            domain1 = urlparse(url1).netloc
-            domain2 = urlparse(url2).netloc
-            return domain1 == domain2
-        except:
-            return False
-    
-    def is_file_link(self, url):
-        """检查是否是文件链接"""
-        file_extensions = [
-            '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-            '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.ico',
-            '.zip', '.rar', '.7z', '.tar', '.gz',
-            '.mp3', '.mp4', '.avi', '.mov', '.wmv',
-            '.css', '.js', '.exe', '.dmg', '.iso'
-        ]
-        url_lower = url.lower()
-        return any(url_lower.endswith(ext) for ext in file_extensions)
+        return list(set(content_urls))
     
     def contains_chinese(self, text):
         """检查文本是否包含中文"""
