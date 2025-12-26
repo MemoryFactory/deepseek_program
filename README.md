@@ -33,3 +33,7 @@
 ## lof_monitor
 
 > LOF溢价情况监测，用于指导LOF套利操作
+
+## futures_analysis
+
+> 期货价格获取和分析，关注目前价格在历史数据中的位置
