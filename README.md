@@ -45,3 +45,7 @@
 ## gold_converter
 
 > 国际黄金与国内黄金定价换算
+
+## resistor_calculator
+
+> 电阻色环和阻值转换计算器
